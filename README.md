@@ -1,0 +1,1 @@
+# meanjs-stack-mongo-rs
