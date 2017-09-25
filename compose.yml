@@ -1,0 +1,139 @@
+version: '3.3'
+services:  
+
+    nginx:
+      image: nginx
+      ports:
+        - 80:80
+      networks:
+        - mean_external
+      deploy:
+        mode: replicated
+        replicas: 2
+      configs:
+        - source: config_nginx
+          target: /etc/nginx/conf.d/default.conf 
+          uid: '0'
+          gid: '0'
+          mode: 0644
+      depends_on:
+        - mean
+
+    mean:
+      image: meanjs/mean
+      ports:
+        - 3000:3000
+        - 5858:5858
+        - 8080:8080
+        - 35729:35729
+      environment:
+        - NODE_ENV=development
+        - MONGODB_URI=mongodb://XXXXXXX:XXXXXXXXXXXXXXXXX@db1:27017,db2:27017/admin?replicaSet=rs0
+      networks: 
+       - mean_external
+       - mean_internal
+      depends_on:
+        - db1
+        - db2
+      
+    db1:
+      image: mongo
+      networks:
+        - mean_internal
+      ports:
+        - 27001:27017
+      deploy:
+        placement:
+          constraints:
+            - node.hostname == d1
+      volumes:
+        - 'mongodb1:/data/db'
+      configs:
+        - source: key_mongo
+          target: /home/mongo-keyfile
+          uid: '999'
+          gid: '999'
+          mode: 0600
+      command: ["mongod","--keyFile","/home/mongo-keyfile","--replSet","rs0"]
+      
+    db2:
+      image: mongo
+      networks:
+        - mean_internal
+      ports:
+        - 27002:27017
+      deploy:
+        placement:
+          constraints:
+            - node.hostname == d2
+      volumes:
+        - 'mongodb2:/data/db'
+      configs:
+        - source: key_mongo
+          target: /home/mongo-keyfile
+          uid: '999'
+          gid: '999'
+          mode: 0600
+      command: ["mongod","--keyFile","/home/mongo-keyfile","--replSet","rs0"]
+
+    db3:
+      image: mongo
+      networks:
+        - mean_internal
+      ports:
+        - 27003:27017
+      deploy:
+        placement:
+          constraints:
+           - node.hostname == d1
+      volumes:
+        - 'mongodb3:/data/db'
+      configs:
+        - source: key_mongo
+          target: /home/mongo-keyfile
+          uid: '999'
+          gid: '999'
+          mode: 0600
+      command: ["mongod","--keyFile","/home/mongo-keyfile","--replSet","rs0"]
+      
+    backup:
+      image: yvivanchenko/mongo-backup
+      deploy:
+        placement:
+          constraints:
+            - node.hostname == d1
+      networks:
+        - mean_internal
+      volumes:
+        - 'backup2:/var/backup_two_hour'
+        - 'backup1:/var/backup_one_hour'      
+      
+networks:
+  mean_external:
+    driver: overlay
+  mean_internal: 
+    driver: overlay
+
+volumes:
+  mongodb1:
+  mongodb2:
+  mongodb3:
+  backup2:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=192.168.0.101
+      device: ":/home/backups/mongo/backup_two_hour"
+  backup1:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=192.168.0.103
+      device: ":/home/backups/mongo/backup_one_hour"
+
+  
+configs:
+  config_nginx:
+    file: ./proxy/default.conf
+  key_mongo:
+    file: ./mongo/mongo-keyfile
